@@ -19,23 +19,27 @@ import (
 // Server is a redoc server.
 type Server struct {
 	*http.ServeMux
-	spec    string
-	index   string
-	title   string
-	family  string
-	version string
-	prefix  string
+	spec     string
+	index    string
+	template []byte
+	family   string
+	version  string
+	prefix   string
+	params   map[string]interface{}
 }
 
 // New creates a new redoc server.
 func New(spec, index string, opts ...Option) *Server {
 	s := &Server{
-		spec:    spec,
-		index:   index,
-		title:   "ReDoc",
-		family:  "Montserrat:300,400,700|Roboto:300,400,700",
-		version: "next",
-		prefix:  "/_/",
+		spec:     spec,
+		index:    index,
+		template: DefaultTemplate,
+		family:   "Montserrat:300,400,700|Roboto:300,400,700",
+		version:  "next",
+		prefix:   "/_/",
+		params: map[string]interface{}{
+			"title": "ReDoc",
+		},
 	}
 	for _, o := range opts {
 		o(s)
@@ -74,14 +78,25 @@ func (s *Server) Build(ctx context.Context, transport http.RoundTripper) error {
 		res.Header().Set("Content-Type", "text/css")
 		_, _ = res.Write(stylesheet)
 	})
-	// build index
-	index := new(bytes.Buffer)
-	if err := tpl.ExecuteTemplate(index, "index.html", map[string]interface{}{
-		"title":      s.title,
+	// create template
+	tpl, err := template.New("index.html").Parse(string(s.template))
+	if err != nil {
+		return err
+	}
+	// build params
+	params := map[string]interface{}{
 		"spec":       s.spec,
 		"script":     scriptPath,
 		"stylesheet": stylesheetPath,
-	}); err != nil {
+	}
+	for k, v := range s.params {
+		if _, ok := params[k]; !ok {
+			params[k] = v
+		}
+	}
+	// build index
+	index := new(bytes.Buffer)
+	if err := tpl.ExecuteTemplate(index, "index.html", params); err != nil {
 		return err
 	}
 	// handle index
@@ -134,10 +149,10 @@ func WithServeMux(serveMux *http.ServeMux) Option {
 	}
 }
 
-// WithTitle is a redoc server option to set the redoc page title.
-func WithTitle(title string) Option {
+// WithTemplate is a redoc server option to set the template.
+func WithTemplate(template []byte) Option {
 	return func(s *Server) {
-		s.title = title
+		s.template = template
 	}
 }
 
@@ -164,6 +179,18 @@ func WithPrefix(prefix string) Option {
 	}
 }
 
+// WithParam is a redoc server option to set an additional template param.
+func WithParam(key string, value interface{}) Option {
+	return func(s *Server) {
+		s.params[key] = value
+	}
+}
+
+// WithTitle is a redoc server option to set the redoc page title.
+func WithTitle(title string) Option {
+	return WithParam("title", title)
+}
+
 // get retrieves a url using the transport.
 func get(ctx context.Context, urlstr string, transport http.RoundTripper) (string, []byte, error) {
 	// request
@@ -187,10 +214,7 @@ func get(ctx context.Context, urlstr string, transport http.RoundTripper) (strin
 	return res.Header.Get("Content-Type"), buf, nil
 }
 
-// tpl is the index html template.
-var tpl = template.Must(template.New("index.html").Parse(string(indexHTML)))
-
-// indexHTML is the embedded index html.
+// DefaultTemplate is the default index template.
 //
 //go:embed index.html
-var indexHTML []byte
+var DefaultTemplate []byte
