@@ -110,7 +110,7 @@ func (s *Server) Build(ctx context.Context, transport http.RoundTripper) error {
 // buildFontRoutes builds font paths and retrieves the font files.
 func (s *Server) buildFontRoutes(ctx context.Context, transport http.RoundTripper) ([]byte, error) {
 	// retrieve fonts
-	fonts, err := webfonts.AllFontFaces(ctx, s.family, webfonts.WithTransport(transport))
+	fonts, err := webfonts.All(ctx, s.family, webfonts.WithTransport(transport))
 	if err != nil {
 		return nil, err
 	}
